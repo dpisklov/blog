@@ -1,0 +1,31 @@
+{
+  "name": "blog",
+  "version": "1.0.0",
+  "description": "",
+  "main": "build.js",
+  "dependencies": {
+    "debug": "^3.1.0",
+    "highlight.js": "^9.12.0",
+    "jstransformer-handlebars": "^1.1.0",
+    "metalsmith": "^2.3.0",
+    "metalsmith-asciidoctor": "^1.1.2",
+    "metalsmith-code-highlight": "^1.1.0",
+    "metalsmith-collections": "^0.9.0",
+    "metalsmith-excerpts": "^1.2.0",
+    "metalsmith-filemetadata": "^1.0.0",
+    "metalsmith-fingerprint": "^1.0.3",
+    "metalsmith-ignore": "^0.1.2",
+    "metalsmith-in-place": "^4.2.0",
+    "metalsmith-layouts": "^2.1.0",
+    "metalsmith-permalinks": "^0.5.0",
+    "metalsmith-sass": "^1.5.1",
+    "metalsmith-serve": "0.0.7"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED"
+}

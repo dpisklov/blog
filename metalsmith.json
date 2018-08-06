@@ -1,0 +1,61 @@
+{
+  "source": "src",
+  "destination": "build",
+  "plugins": {
+    "metalsmith-filemetadata": [
+      {
+        "pattern": "posts/*",
+        "metadata": {
+          "layout": "post.hbs",
+          "author": "Dmitry Pisklov",
+          "rootpath": "../../"
+        }
+      },
+      {
+        "pattern": "about.adoc",
+        "metadata": {
+          "layout": "post.hbs",
+          "author": "Dmitry Pisklov",
+          "rootpath": "../"
+        }
+      }
+    ],
+    "metalsmith-collections": {
+      "articles": {
+        "pattern": "posts/*.adoc",
+        "sortBy": "date",
+        "reverse": true
+      }
+    },
+    "metalsmith-asciidoctor": true,
+    "metalsmith-code-highlight": {
+      "languages": [],
+      "selector": "pre code"
+    },
+    "metalsmith-excerpts": true,
+    "metalsmith-permalinks": {
+      "pattern": ":title",
+      "relative": false,
+      "date": "YYYY-MM-DD",
+      "linksets": [{
+        "match": { "collection": "articles" },
+        "pattern": "blog/:title-:publishDate"
+      }]
+    },
+    "metalsmith-in-place": {
+      "pattern": "**/*.hbs"
+    },
+    "metalsmith-sass": {
+      "outputDir": "assets/css/"
+    },
+    "metalsmith-fingerprint": {
+      "pattern": "assets/css/main.css"
+    },
+    "metalsmith-ignore": "assets/css/main.css",
+    "metalsmith-layouts": {
+      "pattern": "**/*.html",
+      "default": "default.hbs"
+    },
+    "metalsmith-serve": true
+  }
+}

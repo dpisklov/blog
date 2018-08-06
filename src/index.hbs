@@ -1,0 +1,22 @@
+---
+title: Blog
+permalink: false
+---
+
+  {{#each collections.articles}}
+  <section>
+    {{#if @first}}
+    <div class="image main" data-position="center">
+      <img src="/images/banner.jpg" alt="" />
+    </div>
+    {{/if}}
+
+    <div class="container">
+      <h2>{{this.title}}</h2>
+      {{{this.excerpt}}}
+      <footer>
+        <a href="{{this.path}}">Continue reading</a>
+      </footer>
+    </div>
+  </section>
+  {{/each}}

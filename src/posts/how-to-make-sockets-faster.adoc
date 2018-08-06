@@ -1,0 +1,185 @@
+---
+title: How to make Java sockets faster, or How to be naughty with your JDK
+publishDate: 2018-08-06
+---
+= How to make Java sockets faster, or How to be naughty with your JDK
+
+In this article I will share the experience of making fast faster by stripping off safety nets carefully developed to
+prevent people from shooting themselves in the foot.
+
+In modern java development, there are many libraries saving developers from getting their hands dirty coding sockets
+  and network channels - Netty being probably the most popular low-level library out there. But here at https://chronicle.software/[Chronicle],
+  we sometimes suffer from https://en.wikipedia.org/wiki/Not_invented_here[NIH] syndrome and like to re-implement things...
+  Or seriously speaking, we constantly thrive to go faster and be garbage-free, while Netty, being general-purpose
+  library, doesn't give us enough flexibility nor performance.
+
+And so we ended up implementing our own network layer based directly on SocketChannel API, as a subproduct of our other
+  products which needed to work with network - namely, https://chronicle.software/products/fix/[FIX engine] and
+  https://github.com/OpenHFT/Chronicle-Queue/[Chronicle Queue] replication. Afterwards we asked
+  ourselves - how can we make it even faster? Not that it was slow - it was already pretty fast, but we are obsessed
+  with speed here, and we love to dig further, so we started to look closer at what Java does when we
+  call `SocketChannel#write()`, or `SocketChannel#read()`. We invite readers to check the code of
+  http://hg.openjdk.java.net/jdk8/jdk8/jdk/file/tip/src/share/classes/sun/nio/ch/SocketChannelImpl.java[sun.nio.ch.SocketChannelImpl],
+  below is an excerpt from `SocketChannelImpl#read()` cutting out comments:
+
+[source,java]
+----
+public int read(ByteBuffer buf) throws IOException {
+
+    if (buf == null)
+        throw new NullPointerException();
+
+    synchronized (readLock) {
+        if (!ensureReadOpen())
+            return -1;
+        int n = 0;
+        try {
+            begin();
+
+            synchronized (stateLock) {
+                if (!isOpen()) {
+                    return 0;
+                }
+                readerThread = NativeThread.current();
+            }
+
+            for (;;) {
+                n = IOUtil.read(fd, buf, -1, nd);
+                if ((n == IOStatus.INTERRUPTED) && isOpen()) {
+                    // The system call was interrupted but the channel
+                    // is still open, so retry
+                    continue;
+                }
+                return IOStatus.normalize(n);
+            }
+        } finally {
+            readerCleanup();
+            end(n > 0 || (n == IOStatus.UNAVAILABLE));
+
+            synchronized (stateLock) {
+                if ((n <= 0) && (!isInputOpen))
+                    return IOStatus.EOF;
+            }
+
+            assert IOStatus.check(n);
+        }
+    }
+}
+----
+
+So in this (fairly convoluted) code, we can see 3 synchronized blocks, and quite a bit of code to handle interrupts
+(in particular, call to `SocketChannelImpl#begin()` sets up interruptor to properly implement `AbstractInterruptibleChannel`).
+
+Next, the `IOUtil#read()` looks like a code that actually does read something? Well, not quite:
+
+```java
+static int read(FileDescriptor fd, ByteBuffer dst, long position, NativeDispatcher nd) throws IOException
+{
+    if (dst.isReadOnly())
+        throw new IllegalArgumentException("Read-only buffer");
+    if (dst instanceof DirectBuffer)
+        return readIntoNativeBuffer(fd, dst, position, nd);
+
+    // Substitute a native buffer
+    ByteBuffer bb = Util.getTemporaryDirectBuffer(dst.remaining());
+    try {
+        int n = readIntoNativeBuffer(fd, bb, position, nd);
+        bb.flip();
+        if (n > 0)
+            dst.put(bb);
+        return n;
+    } finally {
+        Util.offerFirstTemporaryDirectBuffer(bb);
+    }
+}
+
+private static int readIntoNativeBuffer(FileDescriptor fd, ByteBuffer bb, long position, NativeDispatcher nd)
+    throws IOException
+{
+    int pos = bb.position();
+    int lim = bb.limit();
+    assert (pos <= lim);
+    int rem = (pos <= lim ? lim - pos : 0);
+
+    if (rem == 0)
+        return 0;
+    int n = 0;
+    if (position != -1) {
+        n = nd.pread(fd, ((DirectBuffer)bb).address() + pos,
+                     rem, position);
+    } else {
+        n = nd.read(fd, ((DirectBuffer)bb).address() + pos, rem);
+    }
+    if (n > 0)
+        bb.position(pos + n);
+    return n;
+}
+```
+
+So the code here tries to figure out if it has heap memory or direct memory, and if it's heap memory - copy it to
+  temporary direct memory before proceeding to the next step. Now, the `SocketDispatcher#read()` just forwards the call
+  to `FileDispatcherImpl#read0()` which is a native call (we are not interested in `#pread()` as we know that we called
+  this code with `position == -1`).
+
+```java
+static native int read0(FileDescriptor fd, long address, int len) throws IOException;
+```
+
+Now we can analyse if we can make this faster. In Chronicle world, we like our network handlers to be single-threaded
+  (to be precise, we like all our code to be single-threaded, and achieve concurrency by using multiple processes
+  instead). Also we prefer using direct memory (we have our own layer on top of raw `ByteBuffer` called
+  https://github.com/OpenHFT/Chronicle-Bytes/[Chronicle-Bytes], but under the bonnet it's still direct `ByteBuffer`).
+
+So can we avoid cost of all the locking, synchronization, calls dispatching? Surely! A bit of reflective magic,
+  and instead of calling `SocketChannel#read()` we do:
+```java
+@Override
+public int read(ByteBuffer buf) throws IOException {
+    if (buf == null)
+        throw new NullPointerException();
+
+    if (isBlocking() || !isOpen() || !(buf instanceof DirectBuffer))
+        return super.read(buf);
+    return readInternal(buf);
+}
+
+int readInternal(ByteBuffer buf) throws IOException {
+    int n = OS.read0(fd, ((DirectBuffer) buf).address() + buf.position(), buf.remaining());
+    if ((n == IOStatus.INTERRUPTED) && socketChannel.isOpen()) {
+        // The system call was interrupted but the channel
+        // is still open, so retry
+        return 0;
+    }
+    int ret = IOStatus.normalize(n);
+    if (ret > 0)
+        buf.position(buf.position() + ret);
+    else if (ret < 0)
+        open = false;
+    return ret;
+}
+```
+
+Here we don't care about blocking sockets (we don't use them), closed sockets (if it's closed probably it's pointless
+  to optimise it?), or heap byte buffers (again, we don't use those), so we just forward those cases to normal
+  `SocketChannelImpl`. But for the main case we care about, we use `MethodHandle` API, which is, simply speaking,
+  compile-time reflection, which means there's no reflection overhead at runtime (see
+  https://docs.oracle.com/javase/8/docs/api/java/lang/invoke/MethodHandles.html[java.lang.invoke.MethodHandle] javadocs
+  for more details).
+
+I will leave it as a homework assignment for reader to do the same analysis for `SocketChannel#write()`.
+
+But no optimization is ever done until you got your numbers, right?
+
+I used an existing benchmark which measures the TCP Queue Replication performance. Unfortunately as the
+  Queue Replication is an enterprise feature (and not open sourced) I am unable to provide the source code for the
+  benchmark, but it's fairly trivial to write your own one to find out how big is the difference for particular usage
+  scenario (we use https://github.com/OpenHFT/Chronicle-Core#jlbh[JLBH] for our benchmarks).
+
+In my case, the benchmark shown 50th percentile going from 6.8 micros to 5.7 micros, and 90th percentile from
+  8.2 to 7.1, thus shaving off 1.1 microsecond. Although 1 microsecond might sound like a little, comparing to the
+  end-to-end latency of 5.7 micros it is a 19% difference - that doesn't sound so little anymore?! The benchmark was run
+  on my desktop, quad-core i7-6700K CPU @ 4.00GHz running latest Manjaro Linux.
+
+Want to know more about how we do things like this? A lot of things we do are actually open source, so feel free to
+  browse our projects at https://github.com/OpenHFT/[github]. The source code for the sockets described today is
+  https://github.com/OpenHFT/Chronicle-Core/tree/master/src/main/java/net/openhft/chronicle/core/tcp[here].

@@ -1,0 +1,9 @@
+---
+title: About
+isAboutActive: true
+---
+= About
+
+I am a developer with a particular passion for performance and low-latency, mainly focusing on Java.
+
+I've been working for investment banks and commodity trading for the last 10 years. Currently I work in the Core team of https://chronicle.software/[Chronicle Software].
