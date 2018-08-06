@@ -32,7 +32,10 @@
       "languages": [],
       "selector": "pre code"
     },
-    "metalsmith-excerpts": true,
+    "metalsmith-snippet": {
+      "stop": ["</p>"],
+      "suffix": "."
+    },
     "metalsmith-permalinks": {
       "pattern": ":title",
       "relative": false,
@@ -48,10 +51,9 @@
     "metalsmith-sass": {
       "outputDir": "assets/css/"
     },
-    "metalsmith-fingerprint": {
+    "metalsmith-fingerprint-ignore": {
       "pattern": "assets/css/main.css"
     },
-    "metalsmith-ignore": "assets/css/main.css",
     "metalsmith-layouts": {
       "pattern": "**/*.html",
       "default": "default.hbs"
