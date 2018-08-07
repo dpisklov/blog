@@ -10,17 +10,17 @@ prevent people from shooting themselves in the foot.
 In modern java development, there are many libraries saving developers from getting their hands dirty coding sockets
   and network channels - Netty being probably the most popular low-level library out there. But here at https://chronicle.software/[Chronicle],
   we sometimes suffer from https://en.wikipedia.org/wiki/Not_invented_here[NIH] syndrome and like to re-implement things...
-  Or seriously speaking, we constantly thrive to go faster and be garbage-free, while Netty, being general-purpose
+  Or seriously speaking, we constantly thrive to go faster and be garbage-free, while Netty, being a general-purpose
   library, doesn't give us enough flexibility nor performance.
 
-And so we ended up implementing our own network layer based directly on SocketChannel API, as a subproduct of our other
+We ended up implementing our own network layer based directly on SocketChannel API, as a subproduct of our other
   products which needed to work with network - namely, https://chronicle.software/products/fix/[FIX engine] and
   https://github.com/OpenHFT/Chronicle-Queue/[Chronicle Queue] replication. Afterwards we asked
   ourselves - how can we make it even faster? Not that it was slow - it was already pretty fast, but we are obsessed
   with speed here, and we love to dig further, so we started to look closer at what Java does when we
   call `SocketChannel#write()`, or `SocketChannel#read()`. We invite readers to check the code of
   http://hg.openjdk.java.net/jdk8/jdk8/jdk/file/tip/src/share/classes/sun/nio/ch/SocketChannelImpl.java[sun.nio.ch.SocketChannelImpl],
-  below is an excerpt from `SocketChannelImpl#read()` cutting out comments:
+  below is an excerpt from `SocketChannelImpl#read()` cutting out the comments:
 
 [source,java]
 ----
@@ -68,7 +68,7 @@ public int read(ByteBuffer buf) throws IOException {
 ----
 
 So in this (fairly convoluted) code, we can see 3 synchronized blocks, and quite a bit of code to handle interrupts
-(in particular, call to `SocketChannelImpl#begin()` sets up interruptor to properly implement `AbstractInterruptibleChannel`).
+(in particular, a call to `SocketChannelImpl#begin()` sets up interruptor to properly implement `AbstractInterruptibleChannel`).
 
 Next, the `IOUtil#read()` looks like a code that actually does read something? Well, not quite:
 
@@ -125,7 +125,7 @@ So the code here tries to figure out if it has heap memory or direct memory, and
 static native int read0(FileDescriptor fd, long address, int len) throws IOException;
 ```
 
-Now we can analyse if we can make this faster. In Chronicle world, we like our network handlers to be single-threaded
+Now we can analyse if we can make this faster. In the Chronicle world, we like our network handlers to be single-threaded
   (to be precise, we like all our code to be single-threaded, and achieve concurrency by using multiple processes
   instead). Also we prefer using direct memory (we have our own layer on top of raw `ByteBuffer` called
   https://github.com/OpenHFT/Chronicle-Bytes/[Chronicle-Bytes], but under the bonnet it's still direct `ByteBuffer`).
@@ -160,7 +160,7 @@ int readInternal(ByteBuffer buf) throws IOException {
 ```
 
 Here we don't care about blocking sockets (we don't use them), closed sockets (if it's closed probably it's pointless
-  to optimise it?), or heap byte buffers (again, we don't use those), so we just forward those cases to normal
+  to optimise it?), or heap byte buffers (again, we don't use those), so we just forward those cases to the normal
   `SocketChannelImpl`. But for the main case we care about, we use `MethodHandle` API, which is, simply speaking,
   compile-time reflection, which means there's no reflection overhead at runtime (see
   https://docs.oracle.com/javase/8/docs/api/java/lang/invoke/MethodHandles.html[java.lang.invoke.MethodHandle] javadocs
@@ -168,7 +168,7 @@ Here we don't care about blocking sockets (we don't use them), closed sockets (i
 
 I will leave it as a homework assignment for reader to do the same analysis for `SocketChannel#write()`.
 
-But no optimization is ever done until you got your numbers, right?
+No optimization is ever done until you got your numbers, right?
 
 I used an existing benchmark which measures the TCP Queue Replication performance. Unfortunately as the
   Queue Replication is an enterprise feature (and not open sourced) I am unable to provide the source code for the
