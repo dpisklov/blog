@@ -6,4 +6,4 @@ isAboutActive: true
 
 I am a developer with a particular passion for performance and low-latency, mainly focusing on Java.
 
-I've been working for investment banks and commodity trading for the last 10 years. Currently I work in the Core team of https://chronicle.software/[Chronicle Software].
+I've been working for various investment banks and commodity trading firms for the last 15 years. Currently I work in Goldman Sachs. For more details about me please visit my LonkedIn page.
