@@ -20,7 +20,7 @@
         }
       }
     ],
-    "metalsmith-collections": {
+    "@metalsmith/collections": {
       "articles": {
         "pattern": "posts/*.adoc",
         "sortBy": "date",
@@ -29,32 +29,33 @@
     },
     "metalsmith-asciidoctor": true,
     "metalsmith-code-highlight": {
-      "languages": [],
       "selector": "pre code"
     },
     "metalsmith-snippet": {
       "stop": ["</p>"],
       "suffix": "."
     },
-    "metalsmith-permalinks": {
+    "@metalsmith/permalinks": {
       "pattern": ":title",
       "relative": false,
       "date": "YYYY-MM-DD",
       "linksets": [{
         "match": { "collection": "articles" },
-        "pattern": "blog/:title-:publishDate"
+        "pattern": "blog/:publishDate/:title"
       }]
     },
     "metalsmith-in-place": {
       "pattern": "**/*.hbs"
     },
-    "metalsmith-sass": {
-      "outputDir": "assets/css/"
+    "@metalsmith/sass": {
+      "entries": {
+        "src/sass/main.scss": "assets/css/main.css"
+      }
     },
     "metalsmith-fingerprint-ignore": {
       "pattern": "assets/css/main.css"
     },
-    "metalsmith-layouts": {
+    "@metalsmith/layouts": {
       "pattern": "**/*.html",
       "default": "default.hbs"
     }
